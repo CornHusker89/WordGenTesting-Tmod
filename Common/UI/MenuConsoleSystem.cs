@@ -17,13 +17,18 @@ public class MenuConsoleSystem : ModSystem
     {
         public readonly string Name;
         public readonly string Description;
-        public readonly Action<string[]> TestCallback;
+        public readonly Func<string[], string>[] TestCallbacks;
         internal readonly string AddedBy;
-        public Test(Mod mod, string name, string description, Action<string[]> testCallback, string addedBy)
+        
+        /// <param name="mod">an instance of your mod</param>
+        /// <param name="testCallback">the function that will be executed as a test. inputs all other params from input and output null if success, and any message if it's not</param>
+        /// <param name="name">main name for command, can be called using this name. ex. "sampletest"</param>
+        /// <param name="description">basic description of the test</param>
+        public Test(Mod mod, Func<string[], string>[] testCallback, string name, string description = null)
         {
             Name = name;
             Description = description;
-            TestCallback = testCallback ?? throw new ArgumentException("No callback specified. Tests are useless without a callback.");
+            TestCallbacks= testCallback ?? throw new ArgumentNullException(nameof(testCallback));
             AddedBy = mod.DisplayName;
         }
     }
@@ -36,23 +41,21 @@ public class MenuConsoleSystem : ModSystem
         public readonly Action<string[]> Callback;
         internal readonly string AddedBy;
         
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="name">Main name for command, can be called using this name. ex. "test"</param>
-        /// <param name="callback">The function that will be executed. provides all other values from input, and any output to console must happen within callback</param>
-        /// <param name="mod">An instance of your mod</param>
-        /// <param name="shorthands">Any variations of the name to be used when calling from console. ex. ["t"]</param>
-        /// <param name="description">Basic description of the command, include any params or flags. ex. "executes a test using a given name"</param>
+        /// <param name="mod">an instance of your mod</param>
+        /// <param name="callback">the function that will be executed. provides all other values from input, and any output to console must happen within callback</param>
+        /// <param name="name">main name for command, can be called using this name. ex. "test"</param>
+        /// <param name="shorthands">any variations of the name to be used when calling from console. ex. ["t"]</param>
+        /// <param name="description">basic description of the command, include any params or flags. ex. "executes a test using a given name"</param>
         public Command(Mod mod, Action<string[]> callback,string name, string[] shorthands = null, string description = null) 
         {
             Name = name;
             Shorthands = shorthands ?? [];
             Description = description;
-            Callback = callback ?? throw new ArgumentException("No callback specified. Commands are useless without a callback.");
+            Callback = callback ?? throw new ArgumentNullException(nameof(callback));
             AddedBy = mod.DisplayName;
         }
         
+        /// <returns>whether the string maps to this command</returns>
         public bool IsThisCommand(string input)
         {
             if (Name == input) return true;
@@ -66,25 +69,19 @@ public class MenuConsoleSystem : ModSystem
         {
             base.Recalculate();
             // encountered issues with 4k screens, changing max values seemed to alleviate the issue
-            MaxWidth.Set(float.MaxValue, 0f);
-            MaxHeight.Set(float.MaxValue, 0f);
+            MaxWidth.Set(float.MaxValue, 0);
+            MaxHeight.Set(float.MaxValue, 0);
         }
     }
     
-    public class TextInput : UIElement
+    public class TextInput(string hintText) : UIElement
     {
-        private readonly string _hintText;
         private int _textBlinkerCount;
         private string _currentString = string.Empty;
 
         public delegate void EventHandler(object sender, EventArgs e);
         public event EventHandler OnTextChange;
 
-        public TextInput(string hintText)
-        {
-            _hintText = hintText;
-        }
-        
         public void SetText(string newText) 
         {
             if (newText != _currentString) {
@@ -101,7 +98,7 @@ public class MenuConsoleSystem : ModSystem
 
             CalculatedStyle space = GetDimensions();
             if (_currentString.Length == 0) {
-                Utils.DrawBorderString(spriteBatch, _hintText, new Vector2(space.X, space.Y), Color.Gray, 2.2f);
+                Utils.DrawBorderString(spriteBatch, hintText, new Vector2(space.X, space.Y), Color.Gray, 2.2f);
             }
             else {
                 Utils.DrawBorderString(spriteBatch, displayString, new Vector2(space.X, space.Y), Color.White, 2.2f);
@@ -141,8 +138,10 @@ public class MenuConsoleSystem : ModSystem
             Input.Top.Set(height * 0.75f, 0);
             Input.OverflowHidden = true;
             
-            Output.Left.Set(width * -0.053f, 0);
-            Output.Top.Set(height * -0.02f, 0);
+            // Output.Left.Set(width * -0.053f, 0);
+            // Output.Top.Set(height * -0.02f, 0);
+            Output.Left.Set(0, -0.047f);
+            Output.Top.Set(0, -0.015f);
             Output.OverflowHidden = true;
         }
     }
@@ -151,16 +150,16 @@ public class MenuConsoleSystem : ModSystem
     private MenuConsole _modConsole;
     
     private string _currentInput = string.Empty;
-    private List<string> _inputHistory = new List<string>();
+    private readonly List<string> _inputHistory = [string.Empty];
     
     /// <summary>
-    /// 0 represents the most recent input, while the last element represents the first input the user put in
+    /// 0 represents a new blank input, 1 is their most recent input, the last element represents the first input the user put in
     /// </summary>
     private int _inputHistoryIndex = 0;
     public string CurrentOutput = string.Empty;
     
-    public readonly List<Command> Commands = new List<Command>();
-    public readonly List<Test> Tests = new List<Test>();
+    public readonly List<Command> Commands = [];
+    public readonly List<Test> Tests = [];
 
     private Keys[] _lastPressedKeys = [];
     
@@ -181,29 +180,29 @@ public class MenuConsoleSystem : ModSystem
             inputStrings =>
             {
                 string selfName = ModContent.GetInstance<WorldGenTesting>().DisplayName;
-                string outputString = "currently loaded commands:\n\n";
+                string output = "currently loaded commands:\n\n";
                 foreach (var command in Commands)
                 {
-                    outputString += $" - {command.Name} ";
+                    output += $" - {command.Name} ";
                     if (command.Shorthands.Length > 0)
                     {
-                        outputString += "(";
+                        output += "(";
                         foreach (var shorthand in command.Shorthands)
-                            outputString += $"{shorthand}, ";
-                        outputString = outputString.Remove(outputString.Length - 2, 2); // remove trailing comma and space
-                        outputString += ")";
+                            output += $"{shorthand}, ";
+                        output = output.Remove(output.Length - 2, 2); // remove trailing comma and space
+                        output += ")";
                     }
-                    outputString += "\n";
+                    output += "\n";
                     if (command.Description != null)
-                        outputString += $"{command.Description}\n";
+                        output += $"{command.Description}\n";
                     
                     if (command.AddedBy == selfName)
-                        outputString += $"(built-in command)\n\n";
+                        output += $"(built-in command)\n\n";
                     else
-                        outputString += $"(added by {command.AddedBy})\n\n";
+                        output += $"(added by {command.AddedBy})\n\n";
                 }
                 // remove trailing newlines
-                SendToOutput(outputString.Remove(outputString.Length - 2, 2));
+                SendToOutput(output.Remove(output.Length - 2, 2));
             },
             "help", ["h"], "displays description of every currently loaded command"
         ));
@@ -219,19 +218,25 @@ public class MenuConsoleSystem : ModSystem
                 }
 
                 // find test corresponding with name
-                Test foundTest = null;
-                foreach (var test in Tests)
-                    if (inputStrings[0] == test.Name) 
-                    {
-                        foundTest = test;
-                        break;
-                    }
-                
+                Test foundTest = Tests.FirstOrDefault(test => inputStrings[0] == test.Name);
+
                 if (foundTest == null)
                     SendToOutput($"test of name \"{inputStrings[0]}\" not found");
                 
                 string[] testArgs = inputStrings.Skip(1).ToArray();
-                foundTest!.TestCallback(testArgs);
+                string output = string.Empty;
+                for (var i = 0; i < foundTest!.TestCallbacks.Length; i++)
+                {
+                    string result = foundTest!.TestCallbacks[i](testArgs);
+                    output += $"test #{i + 1} results -";
+                    if (result is null)
+                        output += "success\n\n";
+                    else
+                        output += $"failure\n{result}\n\n";
+                }
+                // remove trailing newlines
+                SendToOutput(output.Remove(output.Length - 2, 2));
+
             },
             "test", ["t"], "runs unit test with given name"
         ));
@@ -259,8 +264,8 @@ public class MenuConsoleSystem : ModSystem
         
         KeyboardState keyboardState = Keyboard.GetState();
         var pressedKeys = keyboardState.GetPressedKeys();
-        var justPressedKeys = pressedKeys;
-        justPressedKeys = justPressedKeys.Except(_lastPressedKeys).ToArray(); // ends up with an array of keys that just got pressed within in the last frame
+        var justPressedKeys = pressedKeys; // an array of keys that just got pressed within in the last frame
+        justPressedKeys = justPressedKeys.Except(_lastPressedKeys).ToArray();
         _lastPressedKeys = pressedKeys;
         
         if (justPressedKeys.Contains(Keys.OemTilde))
@@ -275,22 +280,6 @@ public class MenuConsoleSystem : ModSystem
             string newString = Main.GetInputText(_currentInput);
             newString = newString.Replace("`", "");
             
-            if (justPressedKeys.Contains(Keys.Up))
-            {
-                _inputHistoryIndex++;
-                if (_inputHistoryIndex > _inputHistory.Count - 1)
-                    _inputHistoryIndex = _inputHistory.Count - 1;
-                _currentInput = _inputHistory[_inputHistoryIndex];
-            }
-            
-            if (justPressedKeys.Contains(Keys.Down))
-            {
-                _inputHistoryIndex--;
-                if (_inputHistoryIndex < 0)
-                    _inputHistoryIndex = 0;
-                _currentInput = _inputHistory[_inputHistoryIndex];
-            }
-            
             if (keyboardState.PressingControl() && justPressedKeys.Contains(Keys.C))
             {
                 SendToOutput(" >> " + _currentInput + "C^");
@@ -300,9 +289,9 @@ public class MenuConsoleSystem : ModSystem
             
             if (justPressedKeys.Contains(Keys.Enter))
             {                
-                if (_currentInput != string.Empty && (_inputHistory.Count is 0 || _inputHistory[^1] != _currentInput))
+                if (_currentInput != string.Empty && (_inputHistory.Count == 1 || _inputHistory[1] != _currentInput))
                 {
-                    _inputHistory.Insert(0, _currentInput);
+                    _inputHistory.Insert(1, _currentInput);
                 }
 
                 _inputHistoryIndex = 0;
@@ -314,7 +303,23 @@ public class MenuConsoleSystem : ModSystem
                 return;
             }
             
-            if (newString != _currentInput)
+            var arrowKey = 0; // represents which arrow key got pressed this frame
+            if (justPressedKeys.Contains(Keys.Up))
+                arrowKey = 1;
+            if (justPressedKeys.Contains(Keys.Down))
+                arrowKey = -1;
+            
+            if (arrowKey != 0)
+            {
+                _inputHistoryIndex += arrowKey;
+                if (_inputHistoryIndex < 0)
+                    _inputHistoryIndex = 0;
+                if (_inputHistoryIndex > _inputHistory.Count - 1)
+                    _inputHistoryIndex = _inputHistory.Count - 1;
+                _currentInput = _inputHistory[_inputHistoryIndex];
+                _modConsole.Input.SetText(_currentInput);
+            }
+            else if (newString != _currentInput)
             {
                 _currentInput = newString;
                 _modConsole.Input.SetText(newString);
@@ -360,6 +365,12 @@ public class MenuConsoleSystem : ModSystem
         command.Callback(splitInput);
         return true;
     }
+    
+    private void ClearInput() 
+    {
+        _currentInput = string.Empty;
+        _modConsole.Input.SetText(_currentInput);
+    }
 
     /// <summary>
     /// Toggles console visibility
@@ -380,12 +391,6 @@ public class MenuConsoleSystem : ModSystem
         }
     }
     
-    private void ClearInput() 
-    {
-        _currentInput = string.Empty;
-        _modConsole.Input.SetText(_currentInput);
-    }
-    
     /// <summary>
     /// Adds message to console. Intended for use inside command callbacks.
     /// </summary>
@@ -404,7 +409,7 @@ public class MenuConsoleSystem : ModSystem
         CurrentOutput = string.Empty;
         _modConsole.Output.SetText(CurrentOutput);
     }
-    
+        
     /// <summary>
     /// Adds command to console
     /// </summary>
