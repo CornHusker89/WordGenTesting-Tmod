@@ -1,1 +1,8 @@
 Keybinds.MenuConsoleKeybind.DisplayName: Menu Console Keybind
+
+Items: {
+	SpawnTest: {
+		DisplayName: Spawn Test
+		Tooltip: ""
+	}
+}

@@ -3,67 +3,19 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using Terraria;
 using Microsoft.Xna.Framework.Input;
+using Terraria;
 using Terraria.GameContent.UI.Elements;
+using Terraria.IO;
 using Terraria.ModLoader;
 using Terraria.UI;
+using WorldGenTesting.Helpers;
 
-namespace WorldGenTesting.Common.UI;
+namespace WorldGenTesting.UI;
 
 public class MenuConsoleSystem : ModSystem
-{    
-    public class Test
-    {
-        public readonly string Name;
-        public readonly string Description;
-        public readonly Func<string[], string>[] TestCallbacks;
-        internal readonly string AddedBy;
-        
-        /// <param name="mod">an instance of your mod</param>
-        /// <param name="testCallback">the function that will be executed as a test. inputs all other params from input and output null if success, and any message if it's not</param>
-        /// <param name="name">main name for command, can be called using this name. ex. "sampletest"</param>
-        /// <param name="description">basic description of the test</param>
-        public Test(Mod mod, Func<string[], string>[] testCallback, string name, string description = null)
-        {
-            Name = name;
-            Description = description;
-            TestCallbacks= testCallback ?? throw new ArgumentNullException(nameof(testCallback));
-            AddedBy = mod.DisplayName;
-        }
-    }
-    
-    public class Command
-    {
-        public readonly string Name;
-        public readonly string[] Shorthands;
-        public readonly string Description;
-        public readonly Action<string[]> Callback;
-        internal readonly string AddedBy;
-        
-        /// <param name="mod">an instance of your mod</param>
-        /// <param name="callback">the function that will be executed. provides all other values from input, and any output to console must happen within callback</param>
-        /// <param name="name">main name for command, can be called using this name. ex. "test"</param>
-        /// <param name="shorthands">any variations of the name to be used when calling from console. ex. ["t"]</param>
-        /// <param name="description">basic description of the command, include any params or flags. ex. "executes a test using a given name"</param>
-        public Command(Mod mod, Action<string[]> callback,string name, string[] shorthands = null, string description = null) 
-        {
-            Name = name;
-            Shorthands = shorthands ?? [];
-            Description = description;
-            Callback = callback ?? throw new ArgumentNullException(nameof(callback));
-            AddedBy = mod.DisplayName;
-        }
-        
-        /// <returns>whether the string maps to this command</returns>
-        public bool IsThisCommand(string input)
-        {
-            if (Name == input) return true;
-            return Shorthands != null && Shorthands.Contains(input);
-        }
-    }
-    
-    public class ParentPanel : UIPanel
+{
+    internal class ParentPanel : UIPanel
     {        
         public override void Recalculate()
         {
@@ -74,7 +26,7 @@ public class MenuConsoleSystem : ModSystem
         }
     }
     
-    public class TextInput(string hintText) : UIElement
+    internal class TextInput(string hintText) : UIElement
     {
         private int _textBlinkerCount;
         private string _currentString = string.Empty;
@@ -108,9 +60,9 @@ public class MenuConsoleSystem : ModSystem
         
     public class MenuConsole : UIState
     {
-        public ParentPanel Panel;
-        public TextInput Input;
-        public UIText Output;
+        internal ParentPanel Panel;
+        internal TextInput Input;
+        internal UIText Output;
         
         public override void OnInitialize() {
             Panel = new ParentPanel();
@@ -179,12 +131,12 @@ public class MenuConsoleSystem : ModSystem
             ModContent.GetInstance<WorldGenTesting>(),
             inputStrings =>
             {
-                string selfName = ModContent.GetInstance<WorldGenTesting>().DisplayName;
+                string selfName = $"{ModContent.GetInstance<WorldGenTesting>().DisplayName} ({ModContent.GetInstance<WorldGenTesting>().Name})";
                 string output = "currently loaded commands:\n\n";
                 foreach (var command in Commands)
                 {
                     output += $" - {command.Name} ";
-                    if (command.Shorthands.Length > 0)
+                    if (command.Shorthands?.Length > 0)
                     {
                         output += "(";
                         foreach (var shorthand in command.Shorthands)
@@ -227,7 +179,7 @@ public class MenuConsoleSystem : ModSystem
                 string output = string.Empty;
                 for (var i = 0; i < foundTest!.TestCallbacks.Length; i++)
                 {
-                    string result = foundTest!.TestCallbacks[i](testArgs);
+                    string result = foundTest.TestCallbacks[i](testArgs);
                     output += $"test #{i + 1} results -";
                     if (result is null)
                         output += "success\n\n";
@@ -249,6 +201,29 @@ public class MenuConsoleSystem : ModSystem
             },
             "clear", ["c"], "clears the console output"
         ));
+        
+        /*
+        AddCommand(new Command(
+            ModContent.GetInstance<WorldGenTesting>(),
+            inputStrings =>
+            {
+                if (inputStrings.Length is 0)
+                {
+                    SendToOutput("an argument (the test's name) is required");
+                    return;
+                }
+                
+                Main.LoadWorlds();
+                for (int i = Main.WorldList.Count - 1; i >= 0; i--) //backwards traverse for less weirdness when removing indexes
+                {
+                    if (Main.WorldList[i].Name == inputStrings[0])
+                        TestingHelper.DeleteWorld(Main.WorldList[i]);
+                }
+                Main.LoadWorlds();
+            },
+            "delete_worlds", ["dw"], "deletes all worlds that have the given display name. be careful!"
+        ));
+        */
     }
 
     public override void Unload()
@@ -271,7 +246,7 @@ public class MenuConsoleSystem : ModSystem
         if (justPressedKeys.Contains(Keys.OemTilde))
             ToggleConsole();
         
-        if (_interface.IsVisible)
+        if (_interface is { IsVisible: true })
         {
             _interface.Update(Main.gameTimeCache);
 
@@ -348,7 +323,7 @@ public class MenuConsoleSystem : ModSystem
     private Command FindCommand(string name)
     {
         foreach (var command in Commands)
-            if (command.Name == name || command.Shorthands.Contains(name))
+            if (command.Name == name || (command.Shorthands is not null && command.Shorthands.Contains(name)))
                 return command;
         return null;
     }
@@ -420,19 +395,21 @@ public class MenuConsoleSystem : ModSystem
         // ensure the name/shorthand doesn't already exist
         if (FindCommand(command.Name) != null)
         {
-            string msg = $"command \"{command.Name}\" already exists, either as any other shorthand or name. skipping...";
+            var msg = $"command \"{command.Name}\" already exists, either as any other shorthand or name. skipping...";
             ModContent.GetInstance<WorldGenTesting>().Logger.Warn(msg);
             SendToOutput(msg);
             return false;
         }
-        foreach (string shorthand in command.Shorthands)
-            if (FindCommand(shorthand) != null)
-            {
-                string msg = $"command \"{command.Name}\" shorthand \"{shorthand}\" already exists, either as any other shorthand or name. skipping...";
-                ModContent.GetInstance<WorldGenTesting>().Logger.Warn(msg);
-                SendToOutput(msg);
-                return false;
-            }
+        if (command.Shorthands is not null)
+            foreach (string shorthand in command.Shorthands)
+                if (FindCommand(shorthand) != null)
+                {
+                    var msg = $"command \"{command.Name}\" shorthand \"{shorthand}\" already exists, either as any other shorthand or name. skipping...";
+                    ModContent.GetInstance<WorldGenTesting>().Logger.Warn(msg);
+                    SendToOutput(msg);
+                    return false;
+                }
+        
         Commands.Add(command);
         return true;
     }
@@ -446,7 +423,7 @@ public class MenuConsoleSystem : ModSystem
     {
         if (Tests.Any(existingTest => existingTest.Name == test.Name))
         {
-            string msg = $"test name \"{test.Name}\" already exists. skipping...";
+            var msg = $"test name \"{test.Name}\" already exists. skipping...";
             ModContent.GetInstance<WorldGenTesting>().Logger.Warn(msg);
             SendToOutput(msg);
             return false;
