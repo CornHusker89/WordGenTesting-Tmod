@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -14,7 +16,7 @@ using WorldGenTesting.Helpers;
 namespace WorldGenTesting.UI;
 
 public class MenuConsoleSystem : ModSystem
-{
+{    
     internal class ParentPanel : UIPanel
     {        
         public override void Recalculate()
@@ -131,32 +133,45 @@ public class MenuConsoleSystem : ModSystem
             ModContent.GetInstance<WorldGenTesting>(),
             inputStrings =>
             {
-                string selfName = $"{ModContent.GetInstance<WorldGenTesting>().DisplayName} ({ModContent.GetInstance<WorldGenTesting>().Name})";
-                string output = "currently loaded commands:\n\n";
-                foreach (var command in Commands)
+                if (inputStrings.Length != 0)
                 {
-                    output += $" - {command.Name} ";
-                    if (command.Shorthands?.Length > 0)
-                    {
-                        output += "(";
-                        foreach (var shorthand in command.Shorthands)
-                            output += $"{shorthand}, ";
-                        output = output.Remove(output.Length - 2, 2); // remove trailing comma and space
-                        output += ")";
-                    }
-                    output += "\n";
-                    if (command.Description != null)
-                        output += $"{command.Description}\n";
-                    
-                    if (command.AddedBy == selfName)
-                        output += $"(built-in command)\n\n";
+                    // output description of command
+                    Command targetCommand = FindCommand(inputStrings[0]);
+                    if (targetCommand.Description is not null)
+                        SendToOutput($"Description of {targetCommand.Name}: {targetCommand.Description}");
                     else
-                        output += $"(added by {command.AddedBy})\n\n";
+                        SendToOutput($"Description for {targetCommand.Name} not provided");
                 }
-                // remove trailing newlines
-                SendToOutput(output.Remove(output.Length - 2, 2));
+                else
+                {
+                    // list all commands
+                    string output = "currently loaded commands:\n\n";
+                    foreach (var command in Commands)
+                    {
+                        output += $" - {command.Name} ";
+                        if (command.Shorthands?.Length > 0)
+                        {
+                            output += "(";
+                            foreach (var shorthand in command.Shorthands)
+                                output += $"{shorthand}, ";
+                            output = output.Remove(output.Length - 2, 2); // remove trailing comma and space
+                            output += ")";
+                        }
+                        output += "\n";
+                        if (command.Description != null)
+                            output += $"{command.Description}\n";
+                    
+                        if (command.Name is "help" or "test" or "clear")
+                            output += "built-in command\n\n";
+                        else
+                            output += $"added by {command.AddedBy}\n\n";
+                    }
+                    // remove trailing newlines
+                    output = output.Remove(output.Length - 2, 2);
+                    SendToOutput(output);
+                }
             },
-            "help", ["h"], "displays description of every currently loaded command"
+            "help", ["h"], "displays description of every currently loaded command. Pass the name/callback of a command to view only that command"
         ));
 
         AddCommand(new Command(
@@ -320,7 +335,7 @@ public class MenuConsoleSystem : ModSystem
         }
     }
         
-    private Command FindCommand(string name)
+    internal Command FindCommand(string name)
     {
         foreach (var command in Commands)
             if (command.Name == name || (command.Shorthands is not null && command.Shorthands.Contains(name)))
@@ -328,8 +343,11 @@ public class MenuConsoleSystem : ModSystem
         return null;
     }
         
+    /// <summary>
+    /// Calls command callback in a seperate thread using command string
+    /// </summary>
     /// <returns>true if command successfully found. false otherwise</returns>
-    private bool ProcessCommand(string input)
+    internal bool ProcessCommand(string input)
     {
         string[] splitInput = input.Split(' ');
 
@@ -337,11 +355,14 @@ public class MenuConsoleSystem : ModSystem
         if (command == null)
             return false;
         splitInput = splitInput.Skip(1).ToArray();
-        command.Callback(splitInput);
+        Task.Run(() =>
+        {
+            command.Callback(splitInput);
+        });
         return true;
     }
     
-    private void ClearInput() 
+    public void ClearInput() 
     {
         _currentInput = string.Empty;
         _modConsole.Input.SetText(_currentInput);

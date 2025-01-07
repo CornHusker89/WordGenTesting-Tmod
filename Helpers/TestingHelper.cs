@@ -39,19 +39,7 @@ public static class TestingHelper
         Large = 2
     }
     
-   
-    
-    private static async Task SaveRenderAsync(RenderTarget2D renderTarget, string path)
-    {
-        await using (FileStream stream = new FileStream(path + ".png", FileMode.Create))
-        {
-            await Task.Run(() =>
-            {
-                renderTarget.SaveAsPng(stream, renderTarget.Width, renderTarget.Height);
-            });
-        }
-    }
-    
+       
     /// <summary>
     /// takes a screenshot of a specific section of a world. Can be called during world gen, but not without a loaded world
     /// </summary>
@@ -59,6 +47,7 @@ public static class TestingHelper
     /// <param name="filename">the filename for the resulting screenshot. path will be Terraria/tModLoader/SavedGenerationScreenshots/(filename).png</param>
     public static void TakeScreenshot(Rectangle target, string filename)
     {        
+        // graphics stuff needs to be run on main thread
         Main.RunOnMainThread(() =>
         {
             GraphicsDevice graphics = Main.graphics.GraphicsDevice;
@@ -83,10 +72,12 @@ public static class TestingHelper
                             wallTexture =
                                 ModContent.Request<Texture2D>(textureFilepath, AssetRequestMode.ImmediateLoad);
                         else
-                            wallTexture = TextureAssets.Wall[tile.WallType];
-                        if (wallTexture == null)
-                            continue;
-
+                            // manually load wall, because its a vanilla wall
+                            if (TextureAssets.Wall[tile.WallType].State == AssetState.NotLoaded)
+                                wallTexture = Main.Assets.Request<Texture2D>(TextureAssets.Wall[tile.WallType].Name);
+                            else
+                                wallTexture = TextureAssets.Wall[tile.WallType];
+                        
                         Rectangle sourceRect = new Rectangle(tile.WallFrameX, tile.WallFrameY, 32, 32);
                         Vector2 position = new Vector2((x - target.Left) * 16 - 8, (y - target.Top) * 16 - 8);
                         spriteBatch.Draw(wallTexture.Value, position, sourceRect, Color.White);
@@ -115,9 +106,11 @@ public static class TestingHelper
                             tileTexture =
                                 ModContent.Request<Texture2D>(textureFilepath, AssetRequestMode.ImmediateLoad);
                         else
-                            tileTexture = TextureAssets.Tile[tile.TileType];
-                        if (tileTexture == null)
-                            continue;
+                            // manually load tile, because its a vanilla tile
+                            if (TextureAssets.Tile[tile.TileType].State == AssetState.NotLoaded)
+                                tileTexture = Main.Assets.Request<Texture2D>(TextureAssets.Tile[tile.TileType].Name);
+                            else
+                                tileTexture = TextureAssets.Tile[tile.TileType];
 
                         Rectangle sourceRect = new Rectangle(tile.TileFrameX, tile.TileFrameY, 16, 16);
                         Vector2 position = new Vector2((x - target.Left) * 16, (y - target.Top) * 16);
@@ -136,58 +129,30 @@ public static class TestingHelper
                 Directory.CreateDirectory(path);
 
             string thisPath = Path.Combine(path, filename);
-
+            
+            // add number suffix if necessary
             int counter = 2;
             while (File.Exists(thisPath + ".png"))
             {
                 thisPath = Path.Combine(path, filename) + $"({counter})";
                 counter++;
             }
-
-            SaveRenderAsync(renderTarget, thisPath).ContinueWith(task =>
-            {
-                spriteBatch.Dispose();
-                renderTarget.Dispose();
-
-                if (task.IsFaulted)
-                    ModContent.GetInstance<WorldGenTesting>().Logger.Error($"Failed to save screenshot: {task.Exception}");
-                else
-                    ModContent.GetInstance<WorldGenTesting>().Logger.Info($"Screenshot \"{filename}\" saved.");
-            });
+            
+            using (FileStream stream = new FileStream(thisPath + ".png", FileMode.Create))
+                renderTarget.SaveAsPng(stream, renderTarget.Width, renderTarget.Height);
+            
+            spriteBatch.Dispose();
+            renderTarget.Dispose();
         });
     }
         
-    private static void CustomWorldGenCallback(object threadContext)
-    {
-        var consoleInstance = ModContent.GetInstance<MenuConsoleSystem>();
-        bool save = threadContext is true;
-        try {
-            WorldGen.clearWorld();
-            WorldGen.GenerateWorld(Main.ActiveWorldFileData.Seed);
-            
-            WorldGen.generatingWorld = false;
-            consoleInstance.SendToOutput("World generation complete.");
-            ModContent.GetInstance<WorldGenTesting>().Logger.Info("World generation complete.");
-            
-            if (save)
-            {
-                WorldFile.SaveWorld(Main.ActiveWorldFileData.IsCloudSave, true);
-                consoleInstance.SendToOutput("World saving complete.");
-                ModContent.GetInstance<WorldGenTesting>().Logger.Info("World saving complete.");
-            }
-        }
-        catch (Exception e) {
-            consoleInstance.SendToOutput($"World generation failed with exception: {e}.");
-            ModContent.GetInstance<WorldGenTesting>().Logger.Error($"World generation failed with exception: {e}");
-        }
-    }
         
     /// <summary>
-    /// creates a new world. resulting file can be found in Main.ActiveWorldFileData
+    /// creates a new world. resulting file can be found in Main.ActiveWorldFileData. Blocking function, use either in separate thread or in command callback
     /// </summary>
     /// <param name="name">name of the world</param>
-    /// <param name="size">size of the world</param>
-    /// <param name="evil">the world evil (corruption or crimson</param>
+    /// <param name="size">size of the world. defaults to small</param>
+    /// <param name="evil">the world evil. defaults to random</param>
     /// <param name="seed">seed of the world. defaults to a random seed</param>
     /// <param name="save">if true, the world will be saved. otherwise, will be discarded once generation finishes</param>
     public static void MakeWorld(string name, WorldSize size = WorldSize.Small, WorldEvil evil = WorldEvil.Random,
@@ -197,10 +162,10 @@ public static class TestingHelper
         {
             Main.LoadPlayers();
             Main.SelectPlayer(Main.PlayerList[0]);
-            
+        
             Main.LoadWorlds();
         }    
-        
+    
         if ((int)size == 0) {
             Main.maxTilesX = 4200;
             Main.maxTilesY = 1200;
@@ -214,26 +179,42 @@ public static class TestingHelper
             Main.maxTilesY = 8400;
         }
         WorldGen.setWorldSize();
-        
+    
         Main.GameMode = 0;
         WorldGen.WorldGenParam_Evil = (int)evil;
         Main.worldName = name;
         Main.ActiveWorldFileData = WorldFile.CreateMetadata(Main.worldName, 
             SocialAPI.Cloud != null && SocialAPI.Cloud.EnabledByDefault, Main.GameMode);
-                
+            
         if (seed is null)
             Main.ActiveWorldFileData.SetSeedToRandom();
         else
             Main.ActiveWorldFileData.SetSeed(seed);
 
-        Task.Run(() =>
-        {
-            WorldGen.generatingWorld = true;
-            Main.rand = new UnifiedRandom(Main.ActiveWorldFileData.Seed);
-            WorldGen.gen = true;
-            
-            Task.Factory.StartNew(CustomWorldGenCallback, save);
-        });
+        WorldGen.generatingWorld = true;
+        Main.rand = new UnifiedRandom(Main.ActiveWorldFileData.Seed);
+        WorldGen.gen = true;
+        
+        var consoleInstance = ModContent.GetInstance<MenuConsoleSystem>();
+        try {
+            WorldGen.clearWorld();
+            WorldGen.GenerateWorld(Main.ActiveWorldFileData.Seed);
+        
+            WorldGen.generatingWorld = false;
+            consoleInstance.SendToOutput("World generation complete.");
+            ModContent.GetInstance<WorldGenTesting>().Logger.Info("World generation complete.");
+        
+            if (save)
+            {
+                WorldFile.SaveWorld(Main.ActiveWorldFileData.IsCloudSave, true);
+                consoleInstance.SendToOutput("World saving complete.");
+                ModContent.GetInstance<WorldGenTesting>().Logger.Info("World saving complete.");
+            }
+        }
+        catch (Exception e) {
+            consoleInstance.SendToOutput($"World generation or saving failed with exception.");
+            ModContent.GetInstance<WorldGenTesting>().Logger.Error($"World generation or saving failed with exception: {e}");
+        }
     }
     
     public static void DeleteWorld(WorldFileData worldFileData)
