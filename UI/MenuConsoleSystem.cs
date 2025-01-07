@@ -180,7 +180,7 @@ public class MenuConsoleSystem : ModSystem
                 for (var i = 0; i < foundTest!.TestCallbacks.Length; i++)
                 {
                     string result = foundTest.TestCallbacks[i](testArgs);
-                    output += $"test #{i + 1} results -";
+                    output += $"test #{i + 1} results - ";
                     if (result is null)
                         output += "success\n\n";
                     else
@@ -404,7 +404,7 @@ public class MenuConsoleSystem : ModSystem
             foreach (string shorthand in command.Shorthands)
                 if (FindCommand(shorthand) != null)
                 {
-                    var msg = $"command \"{command.Name}\" shorthand \"{shorthand}\" already exists, either as any other shorthand or name. skipping...";
+                    var msg = $"command \"{command.Name}\" shorthand \"{shorthand}\" already exists, either as another name or shorthand. skipping...";
                     ModContent.GetInstance<WorldGenTesting>().Logger.Warn(msg);
                     SendToOutput(msg);
                     return false;

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Mail;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using ReLogic.Content;
@@ -15,7 +17,9 @@ using Terraria.ModLoader;
 using Terraria.ObjectData;
 using Terraria.Social;
 using Terraria.UI;
+using Terraria.Utilities;
 using Terraria.WorldBuilding;
+using WorldGenTesting.UI;
 
 namespace WorldGenTesting.Helpers;
 
@@ -35,6 +39,18 @@ public static class TestingHelper
         Large = 2
     }
     
+   
+    
+    private static async Task SaveRenderAsync(RenderTarget2D renderTarget, string path)
+    {
+        await using (FileStream stream = new FileStream(path + ".png", FileMode.Create))
+        {
+            await Task.Run(() =>
+            {
+                renderTarget.SaveAsPng(stream, renderTarget.Width, renderTarget.Height);
+            });
+        }
+    }
     
     /// <summary>
     /// takes a screenshot of a specific section of a world. Can be called during world gen, but not without a loaded world
@@ -42,95 +58,130 @@ public static class TestingHelper
     /// <param name="target">section of the world (in tile coordinates) to screenshot</param>
     /// <param name="filename">the filename for the resulting screenshot. path will be Terraria/tModLoader/SavedGenerationScreenshots/(filename).png</param>
     public static void TakeScreenshot(Rectangle target, string filename)
-    {
-        GraphicsDevice graphics = Main.graphics.GraphicsDevice;
-        SpriteBatch spriteBatch = new SpriteBatch(graphics);
-        RenderTarget2D renderTarget = new RenderTarget2D(graphics, target.Width * 16, target.Height * 16);
-
-        graphics.SetRenderTarget(renderTarget);
-        graphics.Clear(Color.SkyBlue);
-        spriteBatch.Begin();
-
-        // render walls
-        for (int x = target.Left; x < target.Left + target.Width; x++)
+    {        
+        Main.RunOnMainThread(() =>
         {
-            for (int y = target.Top; y < target.Top + target.Height; y++)
+            GraphicsDevice graphics = Main.graphics.GraphicsDevice;
+            SpriteBatch spriteBatch = new SpriteBatch(graphics);
+            RenderTarget2D renderTarget = new RenderTarget2D(graphics, target.Width * 16, target.Height * 16);
+
+            graphics.SetRenderTarget(renderTarget);
+            graphics.Clear(Color.SkyBlue);
+            spriteBatch.Begin();
+
+            // render walls
+            for (int x = target.Left; x < target.Left + target.Width; x++)
             {
-                Tile tile = Main.tile[x, y];
-                if (tile != null && tile.WallType != WallID.None)
+                for (int y = target.Top; y < target.Top + target.Height; y++)
                 {
-                    Asset<Texture2D> wallTexture;
-                    string textureFilepath = WallLoader.GetWall(tile.WallType)?.Texture;
-                    if (textureFilepath != null)
-                        wallTexture = ModContent.Request<Texture2D>(textureFilepath, AssetRequestMode.ImmediateLoad);
-                    else
-                        wallTexture = TextureAssets.Wall[tile.WallType];
-                    if (wallTexture == null)
-                        continue;
-                    
-                    Rectangle sourceRect = new Rectangle(tile.WallFrameX, tile.WallFrameY, 32, 32);
-                    Vector2 position = new Vector2((x - target.Left) * 16 - 8, (y - target.Top) * 16 - 8);
-                    spriteBatch.Draw(wallTexture.Value, position, sourceRect, Color.White);
+                    Tile tile = Main.tile[x, y];
+                    if (tile != null && tile.WallType != WallID.None)
+                    {
+                        Asset<Texture2D> wallTexture;
+                        string textureFilepath = WallLoader.GetWall(tile.WallType)?.Texture;
+                        if (textureFilepath != null)
+                            wallTexture =
+                                ModContent.Request<Texture2D>(textureFilepath, AssetRequestMode.ImmediateLoad);
+                        else
+                            wallTexture = TextureAssets.Wall[tile.WallType];
+                        if (wallTexture == null)
+                            continue;
+
+                        Rectangle sourceRect = new Rectangle(tile.WallFrameX, tile.WallFrameY, 32, 32);
+                        Vector2 position = new Vector2((x - target.Left) * 16 - 8, (y - target.Top) * 16 - 8);
+                        spriteBatch.Draw(wallTexture.Value, position, sourceRect, Color.White);
+                    }
                 }
             }
-        }
-        
-        // render tiles
-        for (int x = target.Left; x < target.Left + target.Width; x++)
-        {
-            for (int y = target.Top; y < target.Top + target.Height; y++)
+
+            // render tiles
+            for (int x = target.Left; x < target.Left + target.Width; x++)
             {
-                Tile tile = Main.tile[x, y];
-                if (tile != null && tile.HasTile)
+                for (int y = target.Top; y < target.Top + target.Height; y++)
                 {
-                    // int tileStyle = TileObjectData.GetTileStyle(tile);
-                    // if (tileStyle != -1)
-                    // {
-                    //     var tileData = TileObjectData.GetTileData(tile.TileType, tileStyle);
-                    //     Console.WriteLine(tileData.CoordinateFullHeight + ", " + tileData.CoordinateFullWidth);
-                    // }
-                    
-                    Asset<Texture2D> tileTexture;
-                    string textureFilepath = TileLoader.GetTile(tile.TileType)?.Texture;
-                    if (textureFilepath != null)
-                        tileTexture = ModContent.Request<Texture2D>(textureFilepath, AssetRequestMode.ImmediateLoad);
-                    else
-                        tileTexture = TextureAssets.Tile[tile.TileType];
-                    if (tileTexture == null)
-                        continue;
-                    
-                    Rectangle sourceRect = new Rectangle(tile.TileFrameX, tile.TileFrameY, 16, 16);
-                    Vector2 position = new Vector2((x - target.Left) * 16, (y - target.Top) * 16);
-                    spriteBatch.Draw(tileTexture.Value, position, sourceRect, Color.White);
+                    Tile tile = Main.tile[x, y];
+                    if (tile != null && tile.HasTile)
+                    {
+                        // int tileStyle = TileObjectData.GetTileStyle(tile);
+                        // if (tileStyle != -1)
+                        // {
+                        //     var tileData = TileObjectData.GetTileData(tile.TileType, tileStyle);
+                        //     Console.WriteLine(tileData.CoordinateFullHeight + ", " + tileData.CoordinateFullWidth);
+                        // }
+
+                        Asset<Texture2D> tileTexture;
+                        string textureFilepath = TileLoader.GetTile(tile.TileType)?.Texture;
+                        if (textureFilepath != null)
+                            tileTexture =
+                                ModContent.Request<Texture2D>(textureFilepath, AssetRequestMode.ImmediateLoad);
+                        else
+                            tileTexture = TextureAssets.Tile[tile.TileType];
+                        if (tileTexture == null)
+                            continue;
+
+                        Rectangle sourceRect = new Rectangle(tile.TileFrameX, tile.TileFrameY, 16, 16);
+                        Vector2 position = new Vector2((x - target.Left) * 16, (y - target.Top) * 16);
+                        spriteBatch.Draw(tileTexture.Value, position, sourceRect, Color.White);
+                    }
                 }
             }
-        }
-        
-        spriteBatch.End();
-        graphics.SetRenderTarget(null);
 
-        // determine filepath
-        string path = ModLoader.ModPath.Replace("Mods", "SavedGenerationScreenshots");
+            spriteBatch.End();
+            graphics.SetRenderTarget(null);
 
-        if (!Directory.Exists(path))
-            Directory.CreateDirectory(path);
+            // determine filepath
+            string path = ModLoader.ModPath.Replace("Mods", "SavedGenerationScreenshots");
 
-        string thisPath = Path.Combine(path, filename);
+            if (!Directory.Exists(path))
+                Directory.CreateDirectory(path);
 
-        int counter = 2;
-        while (File.Exists(thisPath + ".png"))
-        {
-            thisPath = Path.Combine(path, filename) + $"({counter})";
-            counter++;
-        }
+            string thisPath = Path.Combine(path, filename);
 
-        using (FileStream stream = new FileStream(thisPath + ".png", FileMode.Create))
-            renderTarget.SaveAsPng(stream, renderTarget.Width, renderTarget.Height);
+            int counter = 2;
+            while (File.Exists(thisPath + ".png"))
+            {
+                thisPath = Path.Combine(path, filename) + $"({counter})";
+                counter++;
+            }
 
-        spriteBatch.Dispose();
-        renderTarget.Dispose();
+            SaveRenderAsync(renderTarget, thisPath).ContinueWith(task =>
+            {
+                spriteBatch.Dispose();
+                renderTarget.Dispose();
+
+                if (task.IsFaulted)
+                    ModContent.GetInstance<WorldGenTesting>().Logger.Error($"Failed to save screenshot: {task.Exception}");
+                else
+                    ModContent.GetInstance<WorldGenTesting>().Logger.Info($"Screenshot \"{filename}\" saved.");
+            });
+        });
     }
-    
+        
+    private static void CustomWorldGenCallback(object threadContext)
+    {
+        var consoleInstance = ModContent.GetInstance<MenuConsoleSystem>();
+        bool save = threadContext is true;
+        try {
+            WorldGen.clearWorld();
+            WorldGen.GenerateWorld(Main.ActiveWorldFileData.Seed);
+            
+            WorldGen.generatingWorld = false;
+            consoleInstance.SendToOutput("World generation complete.");
+            ModContent.GetInstance<WorldGenTesting>().Logger.Info("World generation complete.");
+            
+            if (save)
+            {
+                WorldFile.SaveWorld(Main.ActiveWorldFileData.IsCloudSave, true);
+                consoleInstance.SendToOutput("World saving complete.");
+                ModContent.GetInstance<WorldGenTesting>().Logger.Info("World saving complete.");
+            }
+        }
+        catch (Exception e) {
+            consoleInstance.SendToOutput($"World generation failed with exception: {e}.");
+            ModContent.GetInstance<WorldGenTesting>().Logger.Error($"World generation failed with exception: {e}");
+        }
+    }
+        
     /// <summary>
     /// creates a new world. resulting file can be found in Main.ActiveWorldFileData
     /// </summary>
@@ -175,13 +226,14 @@ public static class TestingHelper
         else
             Main.ActiveWorldFileData.SetSeed(seed);
 
-        WorldGen.GenerateWorld(Main.ActiveWorldFileData.Seed);
-        WorldGen.generatingWorld = false;
-        
-        if (save)
-            WorldFile.SaveWorld(Main.ActiveWorldFileData.IsCloudSave, resetTime: true);
-        
-        return;
+        Task.Run(() =>
+        {
+            WorldGen.generatingWorld = true;
+            Main.rand = new UnifiedRandom(Main.ActiveWorldFileData.Seed);
+            WorldGen.gen = true;
+            
+            Task.Factory.StartNew(CustomWorldGenCallback, save);
+        });
     }
     
     public static void DeleteWorld(WorldFileData worldFileData)
