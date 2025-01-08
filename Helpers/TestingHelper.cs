@@ -69,14 +69,14 @@ public static class TestingHelper
                         Asset<Texture2D> wallTexture;
                         string textureFilepath = WallLoader.GetWall(tile.WallType)?.Texture;
                         if (textureFilepath != null)
-                            wallTexture =
-                                ModContent.Request<Texture2D>(textureFilepath, AssetRequestMode.ImmediateLoad);
+                            wallTexture = ModContent.Request<Texture2D>(textureFilepath, AssetRequestMode.ImmediateLoad);
                         else
+                        {
                             // manually load wall, because its a vanilla wall
                             if (TextureAssets.Wall[tile.WallType].State == AssetState.NotLoaded)
-                                wallTexture = Main.Assets.Request<Texture2D>(TextureAssets.Wall[tile.WallType].Name);
-                            else
-                                wallTexture = TextureAssets.Wall[tile.WallType];
+                                Main.instance.LoadWall(tile.WallType);
+                            wallTexture = TextureAssets.Wall[tile.WallType];
+                        }
                         
                         Rectangle sourceRect = new Rectangle(tile.WallFrameX, tile.WallFrameY, 32, 32);
                         Vector2 position = new Vector2((x - target.Left) * 16 - 8, (y - target.Top) * 16 - 8);
@@ -106,11 +106,12 @@ public static class TestingHelper
                             tileTexture =
                                 ModContent.Request<Texture2D>(textureFilepath, AssetRequestMode.ImmediateLoad);
                         else
+                        {
                             // manually load tile, because its a vanilla tile
                             if (TextureAssets.Tile[tile.TileType].State == AssetState.NotLoaded)
-                                tileTexture = Main.Assets.Request<Texture2D>(TextureAssets.Tile[tile.TileType].Name);
-                            else
-                                tileTexture = TextureAssets.Tile[tile.TileType];
+                                Main.instance.LoadTiles(tile.TileType);
+                            tileTexture = TextureAssets.Tile[tile.TileType];
+                        }
 
                         Rectangle sourceRect = new Rectangle(tile.TileFrameX, tile.TileFrameY, 16, 16);
                         Vector2 position = new Vector2((x - target.Left) * 16, (y - target.Top) * 16);
@@ -159,13 +160,11 @@ public static class TestingHelper
         string seed = null, bool save = false)
     {
         if (Main.selectedPlayer == 0)
-        {
+        {            
             Main.LoadPlayers();
             Main.SelectPlayer(Main.PlayerList[0]);
-        
-            Main.LoadWorlds();
         }    
-    
+        
         if ((int)size == 0) {
             Main.maxTilesX = 4200;
             Main.maxTilesY = 1200;
@@ -198,6 +197,7 @@ public static class TestingHelper
         var consoleInstance = ModContent.GetInstance<MenuConsoleSystem>();
         try {
             WorldGen.clearWorld();
+            Main.LoadWorlds();
             WorldGen.GenerateWorld(Main.ActiveWorldFileData.Seed);
         
             WorldGen.generatingWorld = false;
@@ -215,6 +215,8 @@ public static class TestingHelper
             consoleInstance.SendToOutput($"World generation or saving failed with exception.");
             ModContent.GetInstance<WorldGenTesting>().Logger.Error($"World generation or saving failed with exception: {e}");
         }
+        
+        Main.LoadWorlds();
     }
     
     public static void DeleteWorld(WorldFileData worldFileData)
