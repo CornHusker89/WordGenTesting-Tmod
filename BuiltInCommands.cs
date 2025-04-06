@@ -64,22 +64,20 @@ public class BuiltInCommands : ModSystem {
                 mod.SendToOutput($"executing test {foundTest!.Name}, {runCount} times");
                 for (var i = 0; i < runCount; i++) {
                     var output = string.Empty;
-                    for (var j = 0; j < foundTest.TestCallbacks.Length; j++) {
-                        if (mod.IsCancelingCommand) return;
+                    if (mod.IsCancelingCommand) return;
 
-                        try {
-                            var result = foundTest.TestCallbacks[j]();
+                    try {
+                        var result = foundTest.TestCallback();
 
-                            output += $"test #{j + 1} results - ";
-                            if (result is null)
-                                output += "success\n";
-                            else
-                                output += $"failure\n{result}\n";
-                        }
+                        output += $"test #{i + 1} results - ";
+                        if (result is null)
+                            output += "success\n";
+                        else
+                            output += $"failure\n{result}\n";
+                    }
 
-                        catch (Exception e) {
-                            output += $"failure. Test callbacks threw exception at callback index {j}. Exception:\n{e}";
-                        }
+                    catch (Exception e) {
+                        output += $"failure. Test callbacks threw an unhandled exception. Exception:\n{e}";
                     }
 
                     // remove trailing newlines
@@ -119,24 +117,6 @@ public class BuiltInCommands : ModSystem {
             ModContent.GetInstance<WorldGenTesting>(),
             _ => { mod.ClearOutput(); },
             "clear", ["c"], "clear", "clears the console output"
-        ));
-
-        mod.AddCommand(new Command(
-            ModContent.GetInstance<WorldGenTesting>(),
-            inputStrings => {
-                if (inputStrings.Length is 0) {
-                    mod.SendToOutput("an argument (world_name) is required");
-                    return;
-                }
-
-                Main.LoadWorlds();
-                for (var i = Main.WorldList.Count - 1; i >= 0; i--)
-                    if (Main.WorldList[i].Name == inputStrings[0])
-                        TestingHelper.DeleteWorld(Main.WorldList[i]);
-                Main.LoadWorlds();
-            },
-            "delete_world", ["dw"], "delete_world <world_name>",
-            "deletes all worlds that have the given display name. be careful!"
         ));
     }
 }

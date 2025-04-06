@@ -61,12 +61,6 @@ public static class TestingHelper {
             for (var y = target.Top; y < target.Top + target.Height; y++) {
                 var tile = Main.tile[x, y];
                 if (tile != null && tile.HasTile) {
-                    // int tileStyle = TileObjectData.GetTileStyle(tile);
-                    // if (tileStyle != -1)
-                    // {
-                    //     var tileData = TileObjectData.GetTileData(tile.TileType, tileStyle);
-                    //     Console.WriteLine(tileData.CoordinateFullHeight + ", " + tileData.CoordinateFullWidth);
-                    // }
                     Asset<Texture2D> tileTexture;
                     var textureFilepath = TileLoader.GetTile(tile.TileType)?.Texture;
                     if (textureFilepath != null) {
@@ -276,10 +270,5 @@ public static class TestingHelper {
 
         seed += file.Seed;
         return seed;
-    }
-
-    public static void DeleteWorld(WorldFileData worldFileData) {
-        throw new NotImplementedException();
-        //string filename = worldFileData.GetFileName();
     }
 }
