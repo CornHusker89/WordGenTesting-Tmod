@@ -1,142 +1,297 @@
 #nullable enable
-using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 using Terraria;
+using Terraria.GameContent.UI.Elements;
+using Terraria.GameInput;
 using Terraria.ModLoader;
-using WorldGenTesting.Helpers;
+using Terraria.UI;
 using WorldGenTesting.Types;
+using WorldGenTesting.UI;
 
 namespace WorldGenTesting;
 
 public class WorldGenTesting : Mod {
-    public override void Load() {
-        var consoleSystem = ModContent.GetInstance<MenuConsoleSystem>();
-        consoleSystem.SendToOutput(
-            "Hello, this is Generation Testing's console! It can be toggled using \"tilde\" (`).\nThis console operates like a command line, press any keys to type into the input on the bottom.\nPress enter to send a command, ctrl+c to cancel, and arrow keys to navigate past commands.\nType \"help\" for a list of commands.");
+    private readonly Queue<string> _consoleMessageQueue = new();
+    private readonly MenuConsoleState _consoleUi = new();
 
-        consoleSystem.AddCommand(new Command(
-            ModContent.GetInstance<WorldGenTesting>(),
-            inputStrings => {
-                if (inputStrings.Length != 0) {
-                    // output just one command
-                    var targetCommand = consoleSystem.GetCommand(inputStrings[0]);
-                    if (targetCommand is null)
-                        consoleSystem.SendToOutput(
-                            $"command not found with the given name/callback of \"{inputStrings[0]}\"");
-                    else
-                        consoleSystem.SendToOutput(targetCommand.ToString());
-                }
-                else {
-                    // list all commands
-                    var output = "currently loaded commands:\n\n";
-                    foreach (var command in consoleSystem.Commands) output += command + "\n\n";
-                    output = output.Remove(output.Length - 2, 2); // remove trailing newlines
-                    consoleSystem.SendToOutput(output);
-                }
-            },
-            "help", ["h"], "help <command_name>",
-            "displays description of every currently loaded command. Pass the name/shorthand of a command to view only that command."
-        ));
+    private readonly List<string> _inputHistory = [string.Empty];
 
-        consoleSystem.AddCommand(new Command(
-            ModContent.GetInstance<WorldGenTesting>(),
-            inputStrings => {
-                if (inputStrings.Length is 0) {
-                    consoleSystem.SendToOutput("an argument (name) is required");
-                    return;
-                }
+    private readonly UserInterface _interface = new();
+    public readonly List<Command> Commands = [];
+    public readonly List<Test> Tests = [];
 
-                // find test corresponding with name
-                var foundTest = consoleSystem.Tests.FirstOrDefault(test => inputStrings[0] == test.Name);
+    /// <summary>Flag to trigger clearing the UIList on the next menu update.</summary>
+    private bool _clearOutput;
 
-                if (foundTest is null) consoleSystem.SendToOutput($"test of name \"{inputStrings[0]}\" not found");
+    /// <summary>
+    ///     0 represents a new blank input, 1 is their most recent input. The last element represents the first input the user
+    ///     put in.
+    /// </summary>
+    private int _curInputHistoryIndex;
 
-                var runCount = 1;
-                if (inputStrings.Length >= 2)
-                    try {
-                        runCount = int.Parse(inputStrings[1]);
-                    }
-                    catch (FormatException) {
-                        consoleSystem.SendToOutput(
-                            "param after name should be a number, for attempt counts. number assumed to be 1");
-                    }
+    private string _currentInput = string.Empty;
 
-                consoleSystem.SendToOutput($"executing test {foundTest!.Name}, {runCount} times");
-                for (var i = 0; i < runCount; i++) {
-                    var output = string.Empty;
-                    for (var j = 0; j < foundTest.TestCallbacks.Length; j++) {
-                        if (consoleSystem.IsCancelingCommand) return;
+    private bool _isCancelingCommand;
 
-                        try {
-                            var result = foundTest.TestCallbacks[j]();
+    private bool _isExecutingCommand;
 
-                            output += $"test #{j + 1} results - ";
-                            if (result is null)
-                                output += "success\n";
-                            else
-                                output += $"failure\n{result}\n";
-                        }
+    private Keys[] _lastPressedKeys = [];
 
-                        catch (Exception e) {
-                            output += $"failure. Test callbacks threw exception at callback index {j}. Exception:\n{e}";
-                        }
-                    }
+    /// <summary>Flag to trigger scrolling to the bottom of the UIList on the next menu update.</summary>
+    private bool _scrollDown;
 
-                    // remove trailing newlines
-                    consoleSystem.SendToOutput(output.Remove(output.Length - 1, 1));
-                }
-            },
-            "test", ["t"], "test <name> <counts>", "runs test with given name. counts is optional, defaults to 1"
-        ));
-
-        consoleSystem.AddCommand(new Command(
-            ModContent.GetInstance<WorldGenTesting>(),
-            inputStrings => {
-                string? filter = null;
-                if (inputStrings.Length >= 1) filter = inputStrings[0];
-
-                var output = filter is null
-                    ? "currently loaded tests:\n\n"
-                    : $"currently loaded tests with \"{filter}\" in their name:\n\n";
-
-                foreach (var test in consoleSystem.Tests)
-                    if (filter is not null) {
-                        if (test.Name.Contains(filter)) output += test + "\n\n";
-                    }
-                    else {
-                        output += test + "\n\n";
-                    }
-
-                // remove trailing newlines
-                output = output.Remove(output.Length - 2, 2);
-                consoleSystem.SendToOutput(output);
-            },
-            "list_tests", ["lt"], "list_tests <filter>",
-            "displays every loaded command. filter is optional, filters by name"
-        ));
-
-        consoleSystem.AddCommand(new Command(
-            ModContent.GetInstance<WorldGenTesting>(),
-            _ => { consoleSystem.ClearOutput(); },
-            "clear", ["c"], "clear", "clears the console output"
-        ));
-
-        consoleSystem.AddCommand(new Command(
-            ModContent.GetInstance<WorldGenTesting>(),
-            inputStrings => {
-                if (inputStrings.Length is 0) {
-                    consoleSystem.SendToOutput("an argument (world_name) is required");
-                    return;
-                }
-
-                Main.LoadWorlds();
-                for (var i = Main.WorldList.Count - 1; i >= 0; i--)
-                    if (Main.WorldList[i].Name == inputStrings[0])
-                        TestingHelper.DeleteWorld(Main.WorldList[i]);
-                Main.LoadWorlds();
-            },
-            "delete_world", ["dw"], "delete_world <world_name>",
-            "deletes all worlds that have the given display name. be careful!"
-        ));
+    public bool IsExecutingCommand {
+        get => _isExecutingCommand;
+        set {
+            _isExecutingCommand = value;
+            _consoleUi.TextInput.IsExecutingCommand = value;
+        }
     }
+
+    public bool IsCancelingCommand {
+        get => _isCancelingCommand;
+        set {
+            _isCancelingCommand = value;
+            _consoleUi.TextInput.IsCancelingCommand = value;
+        }
+    }
+
+    public override void Load() {
+        On_Main.UpdateMenu += Main_UpdateMenu;
+        On_Main.DrawMenu += Main_DrawMenu;
+
+        _consoleUi.Activate();
+    }
+
+    public override void Unload() {
+        On_Main.UpdateMenu -= Main_UpdateMenu;
+        On_Main.DrawMenu -= Main_DrawMenu;
+    }
+
+    private void Main_UpdateMenu(On_Main.orig_UpdateMenu orig) {
+        orig();
+
+        if (_scrollDown) {
+            _consoleUi.Scrollbar.ViewPosition = _consoleUi.ScrollingList.GetTotalHeight() - 1;
+            _scrollDown = false;
+        }
+
+        if (_consoleMessageQueue.Count > 0) {
+            while (_consoleMessageQueue.Count > 0) {
+                var text = _consoleMessageQueue.Dequeue();
+                var output = new UIText(string.Empty, 0.8f);
+                output.Height.Set(22.5f * (text.Split('\n').Length + 1), 0f);
+                output.SetText(text);
+                _consoleUi.ScrollingList.Add(output);
+            }
+
+            _scrollDown = true;
+            _consoleUi.Scrollbar.Update(Main.gameTimeCache);
+            _consoleUi.ScrollingList.Update(Main.gameTimeCache);
+        }
+
+        if (_clearOutput) {
+            _consoleUi.ScrollingList.Clear();
+            _clearOutput = false;
+        }
+
+        var keyboardState = Keyboard.GetState();
+        var pressedKeys = keyboardState.GetPressedKeys();
+        var justPressedKeys = pressedKeys; // an array of keys that just got pressed within in the last frame
+        justPressedKeys = justPressedKeys.Except(_lastPressedKeys).ToArray();
+        _lastPressedKeys = pressedKeys;
+
+        if (justPressedKeys.Contains(Keys.OemTilde)) ToggleConsole();
+
+        if (!_interface.IsVisible) return;
+
+        PlayerInput.WritingText = true;
+        Main.instance.HandleIME();
+
+        if (keyboardState.PressingControl() && justPressedKeys.Contains(Keys.C)) {
+            SendToOutput(" >> " + _currentInput + "C^");
+            ClearInput();
+            CancelCommand();
+            return;
+        }
+
+        if (IsExecutingCommand || IsCancelingCommand) return;
+
+        var newString = Main.GetInputText(_currentInput);
+        newString = newString.Replace("`", "");
+        if (newString != _currentInput) {
+            _currentInput = newString;
+            _consoleUi.TextInput.SetText(newString);
+        }
+
+        if (justPressedKeys.Contains(Keys.Enter)) {
+            if (_currentInput != string.Empty && (_inputHistory.Count == 1 || _inputHistory[1] != _currentInput))
+                _inputHistory.Insert(1, _currentInput);
+
+            _curInputHistoryIndex = 0;
+
+            SendToOutput(" >> " + _currentInput);
+            if (_currentInput != string.Empty && !ProcessCommand(_currentInput))
+                SendToOutput($"command \"{_currentInput}\" not recognized");
+            ClearInput();
+            return;
+        }
+
+        var indexChange = 0; // represents which arrow key got pressed this frame
+        if (justPressedKeys.Contains(Keys.Up)) indexChange = 1;
+        if (justPressedKeys.Contains(Keys.Down)) indexChange = -1;
+
+        if (indexChange != 0) {
+            _curInputHistoryIndex += indexChange;
+            if (_curInputHistoryIndex < 0) _curInputHistoryIndex = 0;
+            if (_curInputHistoryIndex > _inputHistory.Count - 1) _curInputHistoryIndex = _inputHistory.Count - 1;
+            _currentInput = _inputHistory[_curInputHistoryIndex];
+            _consoleUi.TextInput.SetText(_currentInput);
+        }
+    }
+
+    private void Main_DrawMenu(On_Main.orig_DrawMenu orig, Main self, GameTime gameTime) {
+        if (_interface.IsVisible) {
+            _interface.Draw(Main.spriteBatch, gameTime);
+            _interface.Update(gameTime);
+
+            Main.DrawThickCursor();
+            Main.DrawCursor(new Vector2(2, 2));
+
+            Main.spriteBatch.End();
+        }
+        else {
+            orig(self, gameTime);
+        }
+    }
+
+    /// <summary>
+    ///     Gets command based on given string, null if nothing is found.
+    /// </summary>
+    internal Command? GetCommand(string name) {
+        foreach (var command in Commands)
+            if (command.IsThisCommand(name))
+                return command;
+        return null;
+    }
+
+    #region Console Functions
+
+    /// <summary>
+    ///     Calls command callback from command string in a separate thread.
+    /// </summary>
+    /// <returns>true if command successfully found. false otherwise</returns>
+    internal bool ProcessCommand(string input) {
+        var splitInput = input.Split(' ');
+
+        var command = GetCommand(splitInput[0]);
+        if (command is null) return false;
+        splitInput = splitInput.Skip(1).ToArray();
+        Task.Run(() => {
+            IsExecutingCommand = true;
+            command.Callback(splitInput);
+            IsExecutingCommand = false;
+            IsCancelingCommand = false;
+        });
+
+        return true;
+    }
+
+    /// <summary>
+    ///     Clears the current user input.
+    /// </summary>
+    public void ClearInput() {
+        _currentInput = string.Empty;
+        _consoleUi.TextInput.SetText(_currentInput);
+    }
+
+    /// <summary>
+    ///     Toggles console visibility.
+    /// </summary>
+    public void ToggleConsole() {
+        if (_interface.CurrentState is null) {
+            _interface.SetState(_consoleUi);
+            _interface.IsVisible = true;
+        }
+        else {
+            _interface.SetState(null);
+            _interface.IsVisible = false;
+        }
+    }
+
+    /// <summary>
+    ///     Adds message to console.
+    /// </summary>
+    /// <param name="text">text to output</param>
+    public void SendToOutput(string text) {
+        _consoleMessageQueue.Enqueue(text);
+    }
+
+    /// <summary>
+    ///     Tries to cancel the currently executing command. Will do nothing if no command is being executed.
+    /// </summary>
+    /// <remarks>
+    ///     For tests, will only cancel between callbacks, no matter how long the callback takes.
+    /// </remarks>
+    public void CancelCommand() {
+        if (!IsExecutingCommand) return;
+        IsCancelingCommand = true;
+    }
+
+    /// <summary>
+    ///     Clears the console output
+    /// </summary>
+    public void ClearOutput() {
+        _clearOutput = true;
+    }
+
+    /// <summary>
+    ///     Adds command to console
+    /// </summary>
+    /// <param name="command">the command to be added</param>
+    /// <returns>whether adding the command was successful. If false, typically because of duplicate names/shorthands</returns>
+    public bool AddCommand(Command command) {
+        // ensure the name/shorthand doesn't already exist
+        if (GetCommand(command.Name) != null) {
+            var msg = $"command \"{command.Name}\" already exists, either as any other shorthand or name. skipping...";
+            ModContent.GetInstance<WorldGenTesting>().Logger.Warn(msg);
+            SendToOutput(msg);
+            return false;
+        }
+
+        foreach (var shorthand in command.Shorthands)
+            if (GetCommand(shorthand) != null) {
+                var msg =
+                    $"command \"{command.Name}\" shorthand \"{shorthand}\" already exists, either as another name or shorthand. skipping...";
+                ModContent.GetInstance<WorldGenTesting>().Logger.Warn(msg);
+                SendToOutput(msg);
+                return false;
+            }
+
+        Commands.Add(command);
+        return true;
+    }
+
+    /// <summary>
+    ///     Add to test command
+    /// </summary>
+    /// <param name="test">the test to be added</param>
+    /// <returns>whether adding the test was successful. If false, typically because of duplicate names</returns>
+    public bool AddTest(Test test) {
+        if (Tests.Any(existingTest => existingTest.Name == test.Name)) {
+            var msg = $"test name \"{test.Name}\" already exists. skipping...";
+            ModContent.GetInstance<WorldGenTesting>().Logger.Warn(msg);
+            SendToOutput(msg);
+            return false;
+        }
+
+        Tests.Add(test);
+        return true;
+    }
+
+    #endregion
 }

@@ -211,27 +211,27 @@ public static class TestingHelper {
         Main.rand = new UnifiedRandom(Main.ActiveWorldFileData.Seed);
         WorldGen.gen = true;
 
-        var consoleInstance = ModContent.GetInstance<MenuConsoleSystem>();
+        var mod = ModContent.GetInstance<WorldGenTesting>();
         try {
             WorldGen.clearWorld();
             Main.LoadWorlds();
             WorldGen.GenerateWorld(Main.ActiveWorldFileData.Seed);
 
             WorldGen.generatingWorld = false;
-            consoleInstance.SendToOutput($"World generation on seed {Main.ActiveWorldFileData.Seed} complete.");
+            mod.SendToOutput($"World generation on seed {Main.ActiveWorldFileData.Seed} complete.");
             ModContent.GetInstance<WorldGenTesting>().Logger
                 .Info($"World generation on seed {Main.ActiveWorldFileData.Seed} complete.");
 
             if (save) {
                 WorldFile.SaveWorld(Main.ActiveWorldFileData.IsCloudSave, true);
-                consoleInstance.SendToOutput("World saving complete.");
+                mod.SendToOutput("World saving complete.");
                 ModContent.GetInstance<WorldGenTesting>().Logger.Info("World saving complete.");
             }
 
             Main.ActiveWorldFileData = null;
         }
         catch (Exception e) {
-            consoleInstance.SendToOutput("World generation or saving failed with exception.");
+            mod.SendToOutput("World generation or saving failed with exception.");
             ModContent.GetInstance<WorldGenTesting>().Logger
                 .Error($"World generation or saving failed with exception: {e}");
         }

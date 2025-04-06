@@ -6,9 +6,9 @@ using Terraria.GameContent.UI.Elements;
 namespace WorldGenTesting.UI;
 
 internal class CommandTextInput(float textScale) : UIPanel {
+    private readonly float _textScale = textScale;
     private string _currentString = string.Empty;
     private int _textBlinkerCount;
-    private readonly float _textScale = textScale;
     internal bool IsCancelingCommand;
 
     internal bool IsExecutingCommand;
