@@ -22,6 +22,9 @@ public static class TestingHelper {
     ///     the filename for the resulting screenshot. path will be
     ///     Terraria/tModLoader/SavedGenerationScreenshots/(filename).png
     /// </param>
+    /// <remarks>
+    ///     Doesn't take into account tile slopes, some styles, paint, or liquids.
+    /// </remarks>
     public static void TakeScreenshot(Rectangle target, string filename) {
         // graphics stuff needs to be run on main thread
         Main.RunOnMainThread(() => {
@@ -44,7 +47,7 @@ public static class TestingHelper {
                         wallTexture = ModContent.Request<Texture2D>(textureFilepath, AssetRequestMode.ImmediateLoad);
                     }
                     else {
-                        // manually load wall, because its a vanilla wall
+                        // manually load wall, because it's a vanilla wall
                         if (TextureAssets.Wall[tile.WallType].State == AssetState.NotLoaded)
                             Main.instance.LoadWall(tile.WallType);
                         wallTexture = TextureAssets.Wall[tile.WallType];
@@ -109,7 +112,7 @@ public static class TestingHelper {
 
     /// <summary>
     ///     creates a new world. resulting file can be found in Main.ActiveWorldFileData.
-    ///     Blocking function, use either in separate thread or in command callback
+    ///     Blocking function, use either in separate thread or in command callback (which is also a separate thread)
     /// </summary>
     /// <param name="name">name of the world</param>
     /// <param name="size">size of the world. defaults to medium</param>
@@ -221,8 +224,6 @@ public static class TestingHelper {
                 mod.SendToOutput("World saving complete.");
                 ModContent.GetInstance<WorldGenTesting>().Logger.Info("World saving complete.");
             }
-
-            Main.ActiveWorldFileData = null;
         }
         catch (Exception e) {
             mod.SendToOutput("World generation or saving failed with exception.");
