@@ -1,1 +1,7 @@
-This is a mod for modders! If you aren't making mods, this mod will do nothing for you.
+This mod adds a main-menu console and other features to enable automated world generation testing.
+There is a multitude of built-in commands to execute manipulate tests, along with useful helper functions like creating worlds and taking screenshots.
+
+NOTE - This is a mod intended to help modders! As a player, it is useless
+
+Use [url=https://github.com/CornHusker89/WordGenTesting-Tmod/wiki/Quickstart-Guide] this [/url] Github link to find a guide on how to use this mod.
+To report bugs, give feedback, or suggest new features join the discord at https://discord.gg/Fm5vxyhCyE
