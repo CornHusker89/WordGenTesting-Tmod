@@ -15,14 +15,14 @@ using WorldGenTesting.UI;
 namespace WorldGenTesting;
 
 public class WorldGenTesting : Mod {
-    private readonly Queue<string> _consoleMessageQueue = new();
+    private Queue<string> _consoleMessageQueue = new();
     private readonly MenuConsoleState _consoleUi = new();
 
-    private readonly List<string> _inputHistory = [string.Empty];
+    private List<string> _inputHistory = [string.Empty];
 
     private readonly UserInterface _interface = new();
-    public readonly List<Command> Commands = [];
-    public readonly List<Test> Tests = [];
+    public List<Command> Commands = [];
+    public List<Test> Tests = [];
 
     /// <summary>Flag to trigger clearing the UIList on the next menu update.</summary>
     private bool _clearOutput;
@@ -36,6 +36,8 @@ public class WorldGenTesting : Mod {
     private string _currentInput = string.Empty;
 
     private bool _isCancelingCommand;
+
+    private bool _sentStartupMessage;
 
     private bool _isExecutingCommand;
 
@@ -172,7 +174,7 @@ public class WorldGenTesting : Mod {
     /// <summary>
     ///     Gets command based on given string, null if nothing is found.
     /// </summary>
-    internal Command? GetCommand(string name) {
+    public Command? GetCommand(string name) {
         foreach (var command in Commands)
             if (command.IsThisCommand(name))
                 return command;
@@ -216,6 +218,10 @@ public class WorldGenTesting : Mod {
         if (_interface.CurrentState is null) {
             _interface.SetState(_consoleUi);
             _interface.IsVisible = true;
+            if (!_sentStartupMessage) {
+                SendToOutput("Hello, this is Generation Testing's console! It can be toggled using \"tilde\" ( ` ).\nThis console operates like a command line, press any keys to type into the input on the bottom.\nPress enter to send a command, ctrl+c to cancel, and arrow keys to navigate past commands.\nType \"help\" for a list of commands.");
+                _sentStartupMessage = true;
+            }
         }
         else {
             _interface.SetState(null);

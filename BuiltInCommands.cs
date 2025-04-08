@@ -11,8 +11,6 @@ namespace WorldGenTesting;
 public class BuiltInCommands : ModSystem {
     public override void Load() {
         var mod = ModContent.GetInstance<WorldGenTesting>();
-        mod.SendToOutput(
-            "Hello, this is Generation Testing's console! It can be toggled using \"tilde\" ( ` ).\nThis console operates like a command line, press any keys to type into the input on the bottom.\nPress enter to send a command, ctrl+c to cancel, and arrow keys to navigate past commands.\nType \"help\" for a list of commands.");
 
         mod.AddCommand(new Command(
             ModContent.GetInstance<WorldGenTesting>(),
@@ -84,7 +82,7 @@ public class BuiltInCommands : ModSystem {
                     mod.SendToOutput(output.Remove(output.Length - 1, 1));
                 }
             },
-            "test", ["t"], "test <name> <counts>", "runs test with given name. counts is optional, defaults to 1"
+            "test", ["t"], "test <name> <counts> <test parameters>", "runs test with given name. counts is optional, defaults to 1"
         ));
 
         mod.AddCommand(new Command(
